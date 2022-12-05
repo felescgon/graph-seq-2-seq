@@ -2,11 +2,11 @@ import torch
 import torch.nn as nn
 
 
-def create_encoder_decoder_model(n_features, hidden_dim, rnn_layer_module, rnn_layers, seq_len, teacher_forcing, dropout=0):
+def create_encoder_decoder_model(n_features, hidden_dim, rnn_layer_module, rnn_layers, seq_len, teacher_forcing, dropout=0, normalization=None):
     encoder = Encoder(n_features=n_features, hidden_dim=hidden_dim, rnn_layer=rnn_layer_module,
-                      num_rnn_layers=rnn_layers, dropout = dropout)
+                      num_rnn_layers=rnn_layers, dropout = dropout, normalization=normalization)
     decoder = Decoder(n_features=n_features, hidden_dim=hidden_dim, rnn_layer=rnn_layer_module,
-                      num_rnn_layers=rnn_layers, dropout = dropout)
+                      num_rnn_layers=rnn_layers, dropout = dropout, normalization=normalization)
     model = EncoderDecoder(encoder=encoder, decoder=decoder, input_len=seq_len, target_len=seq_len,
                            teacher_forcing_prob=teacher_forcing)
     return model
@@ -76,7 +76,7 @@ class EncoderDecoder(nn.Module):
 
 
 class Encoder(nn.Module):
-    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0):
+    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0, normalization=None):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.n_features = n_features
@@ -85,11 +85,43 @@ class Encoder(nn.Module):
         self.dropout = dropout
         self.basic_rnn = rnn_layer(self.n_features, self.hidden_dim, num_layers=1, batch_first=True)
         self.rnns = []
+        self.out_normalization = None
+        self.hidden_normalization = None
+        self.cell_normalization = None
+
         if num_rnn_layers > 1:
             self.rnns = nn.ModuleList([rnn_layer(self.hidden_dim, self.hidden_dim, num_layers=1, batch_first=True) for _ in range(num_rnn_layers-1)])
         self.dropouts = []
         if num_rnn_layers > 1 and dropout > 0:
             self.dropouts = nn.ModuleList([nn.Dropout(p=dropout) for _ in range(num_rnn_layers)])
+        if normalization == "BatchNormalization":
+            self.out_normalization = nn.BatchNorm1d(self.hidden_dim)
+            self.hidden_normalization = nn.BatchNorm1d(self.hidden_dim)
+            if type(self.basic_rnn) == nn.LSTM:
+                self.cell_normalization = nn.BatchNorm1d(self.hidden_dim)
+        if normalization == "LayerNormalization":
+            self.out_normalization = nn.LayerNorm(self.hidden_dim)
+            self.hidden_normalization = nn.LayerNorm(self.hidden_dim)
+            if type(self.basic_rnn) == nn.LSTM:
+                self.cell_normalization = nn.LayerNorm(self.hidden_dim)
+
+    def __apply_normalization(self, tensor):
+        if type(self.out_normalization) == nn.BatchNorm1d:
+            tensor = tensor.permute(0, 2, 1)
+            self.hidden = self.hidden.permute(1, 2, 0)
+            if self.cell_state is not None:
+                self.cell_state = self.cell_state.permute(1, 2, 0)
+        output = self.out_normalization(tensor)
+        if self.hidden is not None:
+            self.hidden = self.hidden_normalization(self.hidden)
+        if self.cell_state is not None and self.cell_normalization is not None:
+            self.cell_state = self.out_normalization(self.cell_state) # I can safely replace 0 by 0 if GRU
+        if type(self.out_normalization) == nn.BatchNorm1d:
+            output = output.permute(0, 2, 1).contiguous()
+            self.hidden = self.hidden.permute(2, 0, 1).contiguous()
+            if self.cell_state is not None:
+                self.cell_state = self.cell_state.permute(2, 0, 1).contiguous()
+        return output
 
     def __apply_dropout(self, index, tensor):
         output = self.dropouts[index](tensor)
@@ -104,6 +136,8 @@ class Encoder(nn.Module):
             rnn_out, (self.hidden, self.cell_state) = self.basic_rnn(X)
         else:
             rnn_out, self.hidden = self.basic_rnn(X)
+        if self.out_normalization is not None:
+            rnn_out = self.__apply_normalization(rnn_out)
         if len(self.dropouts) > 0 and self.training:
             rnn_out = self.__apply_dropout(0, rnn_out)
         for i, rnn in enumerate(self.rnns, start=1):
@@ -111,13 +145,15 @@ class Encoder(nn.Module):
                 rnn_out, (self.hidden, self.cell_state) = rnn(rnn_out, (self.hidden, self.cell_state))
             else:
                 rnn_out, self.hidden = rnn(rnn_out, self.hidden)
+            if self.out_normalization is not None:
+                rnn_out = self.__apply_normalization(rnn_out)
             if len(self.dropouts) > 0 and self.training:
                 rnn_out = self.__apply_dropout(i, rnn_out)
         return rnn_out, self.cell_state  # N, L, F
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0):
+    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0, normalization=None):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.n_features = n_features
@@ -126,24 +162,54 @@ class Decoder(nn.Module):
         self.dropout = dropout
         self.basic_rnn = rnn_layer(self.n_features, self.hidden_dim, num_layers=1, batch_first=True)
         self.rnns = []
+        self.out_normalization = None
+        self.hidden_normalization = None
+        self.cell_normalization = None
         if num_rnn_layers > 1:
             self.rnns = nn.ModuleList([rnn_layer(self.hidden_dim, self.hidden_dim, num_layers=1, batch_first=True) for _ in range(num_rnn_layers-1)])
         self.dropouts = []
         if num_rnn_layers > 1 and dropout > 0:
             self.dropouts = nn.ModuleList([nn.Dropout(p=dropout) for _ in range(num_rnn_layers)])
         self.regression = nn.Linear(self.hidden_dim, self.n_features)
+        if normalization == "BatchNormalization":
+            self.out_normalization = nn.BatchNorm1d(self.hidden_dim)
+            self.hidden_normalization = nn.BatchNorm1d(self.hidden_dim)
+            if type(self.basic_rnn) == nn.LSTM:
+                self.cell_normalization = nn.BatchNorm1d(self.hidden_dim)
+        if normalization == "LayerNormalization":
+            self.out_normalization = nn.LayerNorm(self.hidden_dim)
+            self.hidden_normalization = nn.LayerNorm(self.hidden_dim)
+            if type(self.basic_rnn) == nn.LSTM:
+                self.cell_normalization = nn.LayerNorm(self.hidden_dim)
 
     def init_hidden(self, hidden_seq, cell_state=None):
         device = next(self.parameters()).device
         # We only need the final hidden state
         hidden_final = hidden_seq[:, -1:]  # N, 1, H
-        self.hidden = hidden_final.permute(1, 0, 2)  # 1, N, H
-
+        self.hidden = hidden_final.permute(1, 0, 2).contiguous()  # 1, N, H
         if cell_state is None:
             cell_state_final = torch.zeros(self.hidden.shape).to(device)
         else:
             cell_state_final = cell_state
         self.cell_state = cell_state_final
+
+    def __apply_normalization(self, tensor):
+        if type(self.out_normalization) == nn.BatchNorm1d:
+            tensor = tensor.permute(0, 2, 1)
+            self.hidden = self.hidden.permute(1, 2, 0)
+            if self.cell_state is not None:
+                self.cell_state = self.cell_state.permute(1, 2, 0)
+        output = self.out_normalization(tensor)
+        if self.hidden is not None:
+            self.hidden = self.hidden_normalization(self.hidden)
+        if self.cell_state is not None and self.cell_normalization is not None:
+            self.cell_state = self.out_normalization(self.cell_state) # I can safely replace 0 by 0 if GRU
+        if type(self.out_normalization) == nn.BatchNorm1d:
+            output = output.permute(0, 2, 1).contiguous()
+            self.hidden = self.hidden.permute(2, 0, 1).contiguous()
+            if self.cell_state is not None:
+                self.cell_state = self.cell_state.permute(2, 0, 1).contiguous()
+        return output
 
     def __apply_dropout(self, index, tensor):
         output = self.dropouts[index](tensor)
@@ -158,6 +224,8 @@ class Decoder(nn.Module):
             batch_first_output, (self.hidden, self.cell_state) = self.basic_rnn(X,(self.hidden, self.cell_state))
         else:
             batch_first_output, self.hidden = self.basic_rnn(X, self.hidden)
+        if self.out_normalization is not None:
+            batch_first_output = self.__apply_normalization(batch_first_output)
         if len(self.dropouts) > 0 and self.training:
             batch_first_output = self.__apply_dropout(0, batch_first_output)
         for i, rnn in enumerate(self.rnns, start=1):
@@ -165,6 +233,8 @@ class Decoder(nn.Module):
                 batch_first_output, (self.hidden, self.cell_state) = rnn(batch_first_output, (self.hidden, self.cell_state))
             else:
                 batch_first_output, self.hidden = rnn(batch_first_output, self.hidden)
+            if self.out_normalization is not None:
+                batch_first_output = self.__apply_normalization(batch_first_output)
             if len(self.dropouts) > 0 and self.training:
                 batch_first_output = self.__apply_dropout(i, batch_first_output)
         #last_output = batch_first_output[:, -1:]

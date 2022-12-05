@@ -34,13 +34,14 @@ def prepare_model(n_features, checkpoint):
         rnn_layers = checkpoint_context["rnn_layers"]
         rnn_module = checkpoint_context["rnn_module"]
         teacher_forcing = checkpoint_context["teacher_forcing"]
+        normalization = checkpoint_context["normalization"]
         if rnn_module == "RNN":
             rnn_layer_module = nn.RNN
         elif rnn_module == "GRU":
             rnn_layer_module = nn.GRU
         else:
             rnn_layer_module = nn.LSTM
-        model = create_encoder_decoder_model(n_features, hidden_dim, rnn_layer_module, rnn_layers, seq_len, teacher_forcing)
+        model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim, rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=seq_len, teacher_forcing=teacher_forcing, normalization = normalization)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -108,7 +109,11 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
     export_iterator = iter(export_loader)
     n_samples_export = args.n_samples_export
     for i in trange(n_samples_export, leave=False, colour='green'):
-        input_batch, output_batch = next(export_iterator)
+        try:
+            input_batch, output_batch = next(export_iterator)
+        except StopIteration:
+            export_iterator = iter(export_loader)
+            input_batch, output_batch = next(export_iterator)
         predicted_sequence = sbs_transf.predict(input_batch)[0]
         rescaled_sequence = np.reshape(scaler.inverse_transform(predicted_sequence.reshape(-1, 1)),
                                        predicted_sequence.shape)

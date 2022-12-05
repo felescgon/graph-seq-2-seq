@@ -51,9 +51,9 @@ def recover_checkpoint_data(experiment_root_directory_name):
     return scaled_x_train_tensor, scaled_y_train_tensor, scaled_x_val_tensor, scaled_y_val_tensor
 
 
-def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len, input_output_ratio, scaling_method):
+def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len, input_output_ratio, scaling_method, trace):
     x, y = get_ori_data(sequence_length=seq_len, stride=1, shuffle=True, seed=13,
-                        ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio)
+                        ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio, trace=trace)
     train_idx, val_idx = index_splitter(len(x), [75, 25])
     x_tensor = torch.cat((torch.as_tensor(x), torch.as_tensor(y)), 1)  # full size training
     y_tensor = torch.as_tensor(y)
@@ -106,12 +106,13 @@ def main(args):
     input_output_ratio = args.input_output_ratio
     scaling_method = args.scaling_method
     encoder_decoder_model = args.encoder_decoder_model
+    normalization = args.normalization
 
     params = vars(args)
 
     if encoder_decoder_model == "EncoderDecoder":
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_teach-{teacher_forcing}_lr-{lr}_batch-{batch_size}_seq-{seq_len}/'
-
+        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
     checkpoints_directory_name = f'{experiment_root_directory_name}checkpoints/'
     checkpoint_available = os.path.exists(checkpoints_directory_name) and len(
         os.listdir(checkpoints_directory_name)) > 0
@@ -129,7 +130,7 @@ def main(args):
         parameters_text_file.write(repr(args))
         scaled_x_train_tensor, scaled_y_train_tensor, scaled_x_val_tensor, scaled_y_val_tensor = recover_ori_data(
             experiment_root_directory_name=experiment_root_directory_name, ori_data_filename=ori_data_filename,
-            seq_len=seq_len, input_output_ratio=input_output_ratio, scaling_method=scaling_method)
+            seq_len=seq_len, input_output_ratio=input_output_ratio, scaling_method=scaling_method, trace=trace)
 
     train_data = TensorDataset(scaled_x_train_tensor.float(), scaled_y_train_tensor.float())
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -145,7 +146,7 @@ def main(args):
     if encoder_decoder_model == "EncoderDecoder":
         model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim,
                                              rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=args.seq_len,
-                                             teacher_forcing=teacher_forcing, dropout=dropout)
+                                             teacher_forcing=teacher_forcing, dropout=dropout, normalization=normalization)
     model.to(args.device)
     loss = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -166,6 +167,7 @@ def main(args):
                                   checkpoint_context=params, initial_epoch=initial_epoch, initial_losses=initial_losses,
                                   intial_val_losses=initial_val_losses, device=args.device)
     trainer.set_loaders(train_loader, test_loader)
+    trainer.set_tensorboard(tensorboard_model, folder='experiments/tensorboards')
     trainer.train(epochs)
 
     metrics_text_file = open(experiment_root_directory_name + "metrics.txt", "w")
@@ -256,6 +258,11 @@ if __name__ == '__main__':
         '--device',
         choices=['cuda', 'cpu'],
         default='cpu',
+        type=str)
+    parser.add_argument(
+        '--normalization',
+        choices=['BatchNormalization', 'LayerNormalization'],
+        default=None,
         type=str)
     args = parser.parse_args()
     main(args)
