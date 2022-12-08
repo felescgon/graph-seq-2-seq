@@ -1,5 +1,6 @@
 from torch.utils.data import DataLoader, TensorDataset
 from models.EncoderDecoder import create_encoder_decoder_model
+from models.TCN import TemporalConvNet
 import torch
 import torch.optim as optim
 import os
@@ -28,10 +29,10 @@ def prepare_model(n_features, checkpoint):
     seq_len = checkpoint_context["seq_len"] * 2
     hidden_dim = checkpoint_context["hidden_dim"]
     lr = checkpoint_context["lr"]
+    num_layers = checkpoint_context["num_layers"]
 
     model_type = checkpoint_context['encoder_decoder_model']
     if model_type == "EncoderDecoder":
-        rnn_layers = checkpoint_context["rnn_layers"]
         rnn_module = checkpoint_context["rnn_module"]
         teacher_forcing = checkpoint_context["teacher_forcing"]
         normalization = checkpoint_context["normalization"]
@@ -44,7 +45,13 @@ def prepare_model(n_features, checkpoint):
             rnn_layer_module = nn.GRU
         else:
             rnn_layer_module = nn.LSTM
-        model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim, rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=seq_len, teacher_forcing=teacher_forcing, normalization=normalization, narrow_attn_heads=narrow_attn_heads)
+        model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim, rnn_layer_module=rnn_layer_module, rnn_layers=num_layers, seq_len=seq_len, teacher_forcing=teacher_forcing, normalization=normalization, narrow_attn_heads=narrow_attn_heads)
+    elif model_type == "TCN":
+        kernel_size = checkpoint_context["kernel_size"]
+        num_channels = checkpoint_context["num_channels"]
+        channels = [num_channels for _ in range(num_layers-1)]
+        channels.append (n_features)
+        model = TemporalConvNet(num_inputs=n_features, num_channels=channels, kernel_size=kernel_size, seq_len=seq_len)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

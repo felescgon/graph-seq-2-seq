@@ -10,6 +10,7 @@ import torch.optim as optim
 from models.EncoderDecoder import create_encoder_decoder_model
 from trainer import StepByStep
 import pandas as pd
+from models.TCN import TemporalConvNet
 
 
 def initialize_checkpoint(checkpoints_directory_name, epochs, model, optimizer):
@@ -83,14 +84,14 @@ def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len,
 
 
 def main(args):
-    args.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    args.device = 'cuda' if torch.cuda.is_available() and args.device == 'cuda' else 'cpu'
     if args.device == "cuda":
         torch.cuda.empty_cache()
     print(args)
     ori_data_filename = args.ori_data_filename
     seq_len = args.seq_len * 2
     batch_size = args.batch_size
-    rnn_layers = args.rnn_layers
+    num_layers = args.num_layers
     hidden_dim = args.hidden_dim
     teacher_forcing = args.teacher_forcing
     lr = args.lr
@@ -112,8 +113,12 @@ def main(args):
     params = vars(args)
 
     if encoder_decoder_model == "EncoderDecoder":
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
-        tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn_{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
+        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn_{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
+    elif encoder_decoder_model == 'TCN':
+        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model_{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
+
     checkpoints_directory_name = f'{experiment_root_directory_name}checkpoints/'
     checkpoint_available = os.path.exists(checkpoints_directory_name) and len(
         os.listdir(checkpoints_directory_name)) > 0
@@ -146,8 +151,12 @@ def main(args):
 
     if encoder_decoder_model == "EncoderDecoder":
         model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim,
-                                             rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=args.seq_len,
+                                             rnn_layer_module=rnn_layer_module, rnn_layers=num_layers, seq_len=args.seq_len,
                                              teacher_forcing=teacher_forcing, dropout=dropout, normalization=normalization, narrow_attn_heads = narrow_attn_heads)
+    elif encoder_decoder_model == "TCN":
+        num_channels = [args.num_channels for _ in range(args.num_layers-1)]
+        num_channels.append (n_features)
+        model = TemporalConvNet(num_inputs=n_features, num_channels=num_channels, kernel_size=args.kernel_size, seq_len=args.seq_len)
     model.to(args.device)
     loss = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -231,11 +240,7 @@ if __name__ == '__main__':
         default='GRU',
         type=str)
     parser.add_argument(
-        '--rnn_layers',
-        default=1,
-        type=int)
-    parser.add_argument(
-        '--transf_layers',
+        '--num_layers',
         default=1,
         type=int)
     parser.add_argument(
@@ -248,7 +253,7 @@ if __name__ == '__main__':
         type=str)
     parser.add_argument(
         '--encoder_decoder_model',
-        choices=['EncoderDecoder'],
+        choices=['EncoderDecoder', 'TCN'],
         default='EncoderDecoder',
         type=str)
     parser.add_argument(
@@ -264,6 +269,14 @@ if __name__ == '__main__':
     parser.add_argument(
         '--narrow_attn_heads',
         default=0,
+        type=int)
+    parser.add_argument(
+        '--kernel_size',
+        default=7,
+        type=int)
+    parser.add_argument(
+        '--num_channels',
+        default=25,
         type=int)
     args = parser.parse_args()
     main(args)
