@@ -2,11 +2,14 @@ import torch
 import torch.nn as nn
 
 
-def create_encoder_decoder_model(n_features, hidden_dim, rnn_layer_module, rnn_layers, seq_len, teacher_forcing, dropout=0, normalization=None):
+def create_encoder_decoder_model(n_features, hidden_dim, rnn_layer_module, rnn_layers, seq_len, teacher_forcing,
+                                 dropout=0, normalization=None, narrow_attn_heads=0):
+    if narrow_attn_heads > 0:
+        assert hidden_dim % narrow_attn_heads == 0, "the number of narrow attention heads must be a multiple of the model's hidden dimensions"
     encoder = Encoder(n_features=n_features, hidden_dim=hidden_dim, rnn_layer=rnn_layer_module,
-                      num_rnn_layers=rnn_layers, dropout = dropout, normalization=normalization)
+                      num_rnn_layers=rnn_layers, dropout=dropout, normalization=normalization)
     decoder = Decoder(n_features=n_features, hidden_dim=hidden_dim, rnn_layer=rnn_layer_module,
-                      num_rnn_layers=rnn_layers, dropout = dropout, normalization=normalization)
+                      num_rnn_layers=rnn_layers, dropout=dropout, normalization=normalization, narrow_attn_heads=narrow_attn_heads)
     model = EncoderDecoder(encoder=encoder, decoder=decoder, input_len=seq_len, target_len=seq_len,
                            teacher_forcing_prob=teacher_forcing)
     return model
@@ -47,9 +50,11 @@ class EncoderDecoder(nn.Module):
 
         self.decoder.init_hidden(hidden_seq=hidden_seq, cell_state=cell_state)
 
+        # Disabling teacher forcing as it has been ruled out as unnecessary.
+
         # The last input of the encoder is also
         # the first input of the decoder
-        #dec_inputs = source_seq[:, -1:, :]
+        # dec_inputs = source_seq[:, -1:, :]
 
         # Generates as many outputs as the target length
         # for i in range(self.target_len):
@@ -71,12 +76,13 @@ class EncoderDecoder(nn.Module):
         #         # Otherwise uses the last predicted output
         #         dec_inputs = out
         output = self.decoder(source_seq)
-        #return self.outputs
+        # return self.outputs
         return output
 
 
 class Encoder(nn.Module):
-    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0, normalization=None):
+    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0,
+                 normalization=None):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.n_features = n_features
@@ -90,7 +96,9 @@ class Encoder(nn.Module):
         self.cell_normalization = None
 
         if num_rnn_layers > 1:
-            self.rnns = nn.ModuleList([rnn_layer(self.hidden_dim, self.hidden_dim, num_layers=1, batch_first=True) for _ in range(num_rnn_layers-1)])
+            self.rnns = nn.ModuleList(
+                [rnn_layer(self.hidden_dim, self.hidden_dim, num_layers=1, batch_first=True) for _ in
+                 range(num_rnn_layers - 1)])
         self.dropouts = []
         if num_rnn_layers > 1 and dropout > 0:
             self.dropouts = nn.ModuleList([nn.Dropout(p=dropout) for _ in range(num_rnn_layers)])
@@ -115,7 +123,7 @@ class Encoder(nn.Module):
         if self.hidden is not None:
             self.hidden = self.hidden_normalization(self.hidden)
         if self.cell_state is not None and self.cell_normalization is not None:
-            self.cell_state = self.out_normalization(self.cell_state) # I can safely replace 0 by 0 if GRU
+            self.cell_state = self.out_normalization(self.cell_state)  # I can safely replace 0 by 0 if GRU
         if type(self.out_normalization) == nn.BatchNorm1d:
             output = output.permute(0, 2, 1).contiguous()
             self.hidden = self.hidden.permute(2, 0, 1).contiguous()
@@ -128,7 +136,7 @@ class Encoder(nn.Module):
         if self.hidden is not None:
             self.hidden = self.dropouts[index](self.hidden)
         if self.cell_state is not None:
-            self.cell_state = self.dropouts[index](self.cell_state) # I can safely replace 0 by 0 if GRU
+            self.cell_state = self.dropouts[index](self.cell_state)  # I can safely replace 0 by 0 if GRU
         return output
 
     def forward(self, X):
@@ -153,7 +161,8 @@ class Encoder(nn.Module):
 
 
 class Decoder(nn.Module):
-    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0, normalization=None):
+    def __init__(self, n_features, hidden_dim, rnn_layer: nn.Module = nn.GRU, num_rnn_layers: int = 1, dropout=0,
+                 normalization=None, narrow_attn_heads=0):
         super().__init__()
         self.hidden_dim = hidden_dim
         self.n_features = n_features
@@ -166,11 +175,12 @@ class Decoder(nn.Module):
         self.hidden_normalization = None
         self.cell_normalization = None
         if num_rnn_layers > 1:
-            self.rnns = nn.ModuleList([rnn_layer(self.hidden_dim, self.hidden_dim, num_layers=1, batch_first=True) for _ in range(num_rnn_layers-1)])
+            self.rnns = nn.ModuleList(
+                [rnn_layer(self.hidden_dim, self.hidden_dim, num_layers=1, batch_first=True) for _ in
+                 range(num_rnn_layers - 1)])
         self.dropouts = []
         if num_rnn_layers > 1 and dropout > 0:
             self.dropouts = nn.ModuleList([nn.Dropout(p=dropout) for _ in range(num_rnn_layers)])
-        self.regression = nn.Linear(self.hidden_dim, self.n_features)
         if normalization == "BatchNormalization":
             self.out_normalization = nn.BatchNorm1d(self.hidden_dim)
             self.hidden_normalization = nn.BatchNorm1d(self.hidden_dim)
@@ -181,8 +191,22 @@ class Decoder(nn.Module):
             self.hidden_normalization = nn.LayerNorm(self.hidden_dim)
             if type(self.basic_rnn) == nn.LSTM:
                 self.cell_normalization = nn.LayerNorm(self.hidden_dim)
+        self.attn_keys = None
+        self.attn_values = None
+        self.attn = None
+        if narrow_attn_heads > 0:
+            self.attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=narrow_attn_heads, batch_first=True)
+            self.linear_keys = nn.Linear(self.hidden_dim, self.hidden_dim)
+            self.linear_values = nn.Linear(self.hidden_dim, self.hidden_dim)
+        self.regression = nn.Linear(self.hidden_dim * 2 if narrow_attn_heads > 0 else self.hidden_dim, self.n_features)
+
+    def __init_attn_key_values(self, hidden_seq):
+        self.attn_keys = self.linear_keys(hidden_seq)
+        self.attn_values = self.linear_values(hidden_seq)
 
     def init_hidden(self, hidden_seq, cell_state=None):
+        if self.attn is not None:
+            self.__init_attn_key_values(hidden_seq)
         device = next(self.parameters()).device
         # We only need the final hidden state
         hidden_final = hidden_seq[:, -1:]  # N, 1, H
@@ -203,7 +227,7 @@ class Decoder(nn.Module):
         if self.hidden is not None:
             self.hidden = self.hidden_normalization(self.hidden)
         if self.cell_state is not None and self.cell_normalization is not None:
-            self.cell_state = self.out_normalization(self.cell_state) # I can safely replace 0 by 0 if GRU
+            self.cell_state = self.out_normalization(self.cell_state)  # I can safely replace 0 by 0 if GRU
         if type(self.out_normalization) == nn.BatchNorm1d:
             output = output.permute(0, 2, 1).contiguous()
             self.hidden = self.hidden.permute(2, 0, 1).contiguous()
@@ -216,12 +240,12 @@ class Decoder(nn.Module):
         if self.hidden is not None:
             self.hidden = self.dropouts[index](self.hidden)
         if self.cell_state is not None:
-            self.cell_state = self.dropouts[index](self.cell_state) # I can safely replace 0 by 0 if GRU
+            self.cell_state = self.dropouts[index](self.cell_state)  # I can safely replace 0 by 0 if GRU
         return output
 
     def forward(self, X):
         if type(self.basic_rnn) == nn.LSTM:
-            batch_first_output, (self.hidden, self.cell_state) = self.basic_rnn(X,(self.hidden, self.cell_state))
+            batch_first_output, (self.hidden, self.cell_state) = self.basic_rnn(X, (self.hidden, self.cell_state))
         else:
             batch_first_output, self.hidden = self.basic_rnn(X, self.hidden)
         if self.out_normalization is not None:
@@ -230,17 +254,21 @@ class Decoder(nn.Module):
             batch_first_output = self.__apply_dropout(0, batch_first_output)
         for i, rnn in enumerate(self.rnns, start=1):
             if type(rnn) == nn.LSTM:
-                batch_first_output, (self.hidden, self.cell_state) = rnn(batch_first_output, (self.hidden, self.cell_state))
+                batch_first_output, (self.hidden, self.cell_state) = rnn(batch_first_output,
+                                                                         (self.hidden, self.cell_state))
             else:
                 batch_first_output, self.hidden = rnn(batch_first_output, self.hidden)
             if self.out_normalization is not None:
                 batch_first_output = self.__apply_normalization(batch_first_output)
             if len(self.dropouts) > 0 and self.training:
                 batch_first_output = self.__apply_dropout(i, batch_first_output)
-        #last_output = batch_first_output[:, -1:]
-        #out = self.regression(last_output)
+        if self.attn is not None:
+            attn_output, attn_output_weights = self.attn(batch_first_output, self.attn_keys, self.attn_values)
+            batch_first_output = torch.cat([attn_output, batch_first_output], axis=-1)
+        # last_output = batch_first_output[:, -1:]
+        # out = self.regression(last_output)
         out = self.regression(batch_first_output)
 
         # N, 1, F
-        #return out.view(-1, 1, self.n_features)
+        # return out.view(-1, 1, self.n_features)
         return out

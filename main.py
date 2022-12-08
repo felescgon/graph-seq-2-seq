@@ -107,12 +107,13 @@ def main(args):
     scaling_method = args.scaling_method
     encoder_decoder_model = args.encoder_decoder_model
     normalization = args.normalization
+    narrow_attn_heads = args.narrow_attn_heads
 
     params = vars(args)
 
     if encoder_decoder_model == "EncoderDecoder":
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
-        tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
+        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{rnn_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn_{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
     checkpoints_directory_name = f'{experiment_root_directory_name}checkpoints/'
     checkpoint_available = os.path.exists(checkpoints_directory_name) and len(
         os.listdir(checkpoints_directory_name)) > 0
@@ -146,7 +147,7 @@ def main(args):
     if encoder_decoder_model == "EncoderDecoder":
         model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim,
                                              rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=args.seq_len,
-                                             teacher_forcing=teacher_forcing, dropout=dropout, normalization=normalization)
+                                             teacher_forcing=teacher_forcing, dropout=dropout, normalization=normalization, narrow_attn_heads = narrow_attn_heads)
     model.to(args.device)
     loss = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -213,10 +214,6 @@ if __name__ == '__main__':
         default=0.5,
         type=float)
     parser.add_argument(
-        '--narrow_attn_heads',
-        default=1,
-        type=int)
-    parser.add_argument(
         '--wide_attn_heads',
         default=1,
         type=int)
@@ -264,5 +261,9 @@ if __name__ == '__main__':
         choices=['BatchNormalization', 'LayerNormalization'],
         default=None,
         type=str)
+    parser.add_argument(
+        '--narrow_attn_heads',
+        default=0,
+        type=int)
     args = parser.parse_args()
     main(args)

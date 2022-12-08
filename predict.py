@@ -35,13 +35,16 @@ def prepare_model(n_features, checkpoint):
         rnn_module = checkpoint_context["rnn_module"]
         teacher_forcing = checkpoint_context["teacher_forcing"]
         normalization = checkpoint_context["normalization"]
+        narrow_attn_heads = 0
+        if "narrow_attn_heads" in checkpoint_context:
+            narrow_attn_heads = checkpoint_context["narrow_attn_heads"]
         if rnn_module == "RNN":
             rnn_layer_module = nn.RNN
         elif rnn_module == "GRU":
             rnn_layer_module = nn.GRU
         else:
             rnn_layer_module = nn.LSTM
-        model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim, rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=seq_len, teacher_forcing=teacher_forcing, normalization = normalization)
+        model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim, rnn_layer_module=rnn_layer_module, rnn_layers=rnn_layers, seq_len=seq_len, teacher_forcing=teacher_forcing, normalization=normalization, narrow_attn_heads=narrow_attn_heads)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
