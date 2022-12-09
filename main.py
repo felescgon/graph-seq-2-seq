@@ -11,7 +11,7 @@ from models.EncoderDecoder import create_encoder_decoder_model
 from trainer import StepByStep
 import pandas as pd
 from models.TCN import TemporalConvNet
-
+from models.Transformer import Transformer
 
 def initialize_checkpoint(checkpoints_directory_name, epochs, model, optimizer):
     last_checkpoint_path = \
@@ -116,9 +116,11 @@ def main(args):
         experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
         tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn_{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
     elif encoder_decoder_model == 'TCN':
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{trace}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
         tensorboard_model = f'model_{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
-
+    elif encoder_decoder_model == "Transformer":
+        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model_{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
     checkpoints_directory_name = f'{experiment_root_directory_name}checkpoints/'
     checkpoint_available = os.path.exists(checkpoints_directory_name) and len(
         os.listdir(checkpoints_directory_name)) > 0
@@ -152,11 +154,13 @@ def main(args):
     if encoder_decoder_model == "EncoderDecoder":
         model = create_encoder_decoder_model(n_features=n_features, hidden_dim=hidden_dim,
                                              rnn_layer_module=rnn_layer_module, rnn_layers=num_layers, seq_len=args.seq_len,
-                                             teacher_forcing=teacher_forcing, dropout=dropout, normalization=normalization, narrow_attn_heads = narrow_attn_heads)
+                                             teacher_forcing=teacher_forcing, dropout=dropout, normalization=normalization, narrow_attn_heads=narrow_attn_heads)
     elif encoder_decoder_model == "TCN":
         num_channels = [args.num_channels for _ in range(args.num_layers-1)]
         num_channels.append (n_features)
         model = TemporalConvNet(num_inputs=n_features, num_channels=num_channels, kernel_size=args.kernel_size, seq_len=args.seq_len)
+    elif encoder_decoder_model == "Transformer":
+        model = Transformer(n_features=n_features, hidden_dim=hidden_dim, seq_len=args.seq_len, narrow_attn_heads=narrow_attn_heads, num_layers=num_layers, dropout=dropout)
     model.to(args.device)
     loss = nn.MSELoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
@@ -253,7 +257,7 @@ if __name__ == '__main__':
         type=str)
     parser.add_argument(
         '--encoder_decoder_model',
-        choices=['EncoderDecoder', 'TCN'],
+        choices=['EncoderDecoder', 'TCN', 'Transformer'],
         default='EncoderDecoder',
         type=str)
     parser.add_argument(

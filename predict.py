@@ -13,7 +13,7 @@ import numpy as np
 import argparse
 from distutils import util
 import torch.nn as nn
-
+from models.Transformer import Transformer
 def get_data_loaders(scaled_x_train_tensor, scaled_x_val_tensor, seq_len, batch_size, input_output_ratio):
     train_data = TensorDataset(scaled_x_train_tensor.float(), scaled_x_train_tensor[:, int(seq_len / 2):].float())
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -52,6 +52,9 @@ def prepare_model(n_features, checkpoint):
         channels = [num_channels for _ in range(num_layers-1)]
         channels.append (n_features)
         model = TemporalConvNet(num_inputs=n_features, num_channels=channels, kernel_size=kernel_size, seq_len=seq_len)
+    elif model_type == "Transformer":
+        narrow_attn_heads = checkpoint_context["narrow_attn_heads"]
+        model = Transformer(n_features=n_features, hidden_dim=hidden_dim, seq_len=checkpoint_context["seq_len"], narrow_attn_heads=narrow_attn_heads, num_layers=num_layers, dropout=0)
     optimizer = optim.Adam(model.parameters(), lr=lr)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -61,6 +64,7 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
     input_output_ratio = 1/2
     checkpoint = torch.load(checkpoint_pth_file)
     checkpoint_context = checkpoint['model_params']
+    model_type = checkpoint_context['encoder_decoder_model']
     seq_len = checkpoint_context["seq_len"] * 2
     batch_size = checkpoint_context["batch_size"]
     experiment_root_directory_name = args.experiment_directory_path
@@ -124,6 +128,8 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
         except StopIteration:
             export_iterator = iter(export_loader)
             input_batch, output_batch = next(export_iterator)
+        if model_type == "Transformer":
+            input_batch = torch.concat((input_batch, output_batch), dim=1)
         predicted_sequence = sbs_transf.predict(input_batch)[0]
         rescaled_sequence = np.reshape(scaler.inverse_transform(predicted_sequence.reshape(-1, 1)),
                                        predicted_sequence.shape)
