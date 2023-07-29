@@ -113,13 +113,13 @@ def main(args):
     params = vars(args)
 
     if encoder_decoder_model == "EncoderDecoder":
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        experiment_root_directory_name = f'{args.experiment_save_dir}/model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
         tensorboard_model = f'model_{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn_{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
     elif encoder_decoder_model == 'TCN':
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{trace}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        experiment_root_directory_name = f'{args.experiment_save_dir}/model_{encoder_decoder_model}_{trace}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
         tensorboard_model = f'model_{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
     elif encoder_decoder_model == "Transformer":
-        experiment_root_directory_name = f'experiments/model_{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        experiment_root_directory_name = f'{args.experiment_save_dir}/model_{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
         tensorboard_model = f'model_{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn_{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
     checkpoints_directory_name = f'{experiment_root_directory_name}checkpoints/'
     checkpoint_available = os.path.exists(checkpoints_directory_name) and len(
@@ -181,11 +181,9 @@ def main(args):
                                   checkpoint_context=params, initial_epoch=initial_epoch, initial_losses=initial_losses,
                                   intial_val_losses=initial_val_losses, device=args.device)
     trainer.set_loaders(train_loader, test_loader)
-    trainer.set_tensorboard(tensorboard_model, folder='experiments/tensorboards')
+    trainer.set_tensorboard(tensorboard_model, folder=f'{args.experiment_save_dir}/tensorboards')
     trainer.train(epochs)
 
-    metrics_text_file = open(experiment_root_directory_name + "metrics.txt", "w")
-    metrics_text_file.write('no hay métricas')
     losses = pd.DataFrame({'train_loss': trainer.losses, 'val_loss': trainer.val_losses})
     losses.to_csv(experiment_root_directory_name + "losses.csv")
 
@@ -282,5 +280,9 @@ if __name__ == '__main__':
         '--num_channels',
         default=25,
         type=int)
+    parser.add_argument(
+        '--experiment_save_dir',
+        default='./experiments',
+        type=str)
     args = parser.parse_args()
     main(args)
