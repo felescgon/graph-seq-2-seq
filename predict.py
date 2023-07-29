@@ -24,7 +24,7 @@ def get_data_loaders(scaled_x_train_tensor, scaled_x_val_tensor, seq_len, batch_
     return train_loader, test_loader, train_data, test_data
 
 def prepare_model(n_features, checkpoint):
-    print(args)
+    #print(args)
     checkpoint_context = checkpoint['model_params']
     seq_len = checkpoint_context["seq_len"] * 2
     hidden_dim = checkpoint_context["hidden_dim"]
@@ -136,7 +136,7 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
         np.savetxt(f'{generated_data_directory_name}/sample_{i}.csv', rescaled_sequence, delimiter=",")
 
 def main(args):
-    print(args)
+    #print(args)
     experiment_directories = []
     if args.recursive == True:
         root_dir = args.experiment_directory_path
