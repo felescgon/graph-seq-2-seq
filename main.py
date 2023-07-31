@@ -158,7 +158,7 @@ def main(args):
     elif encoder_decoder_model == "TCN":
         num_channels = [args.num_channels for _ in range(args.num_layers-1)]
         num_channels.append (n_features)
-        model = TemporalConvNet(num_inputs=n_features, num_channels=num_channels, kernel_size=args.kernel_size, seq_len=args.seq_len)
+        model = TemporalConvNet(num_inputs=n_features, num_channels=num_channels, kernel_size=args.kernel_size, seq_len=args.seq_len, dropout=dropout)
     elif encoder_decoder_model == "Transformer":
         model = Transformer(n_features=n_features, hidden_dim=hidden_dim, seq_len=args.seq_len, narrow_attn_heads=narrow_attn_heads, num_layers=num_layers, dropout=dropout)
     model.to(args.device)
