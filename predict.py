@@ -127,13 +127,14 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
 
     export_iterator = iter(export_loader)
     n_samples_export = args.n_samples_export
+    n_samples_to_show_tqdm = 20
 
-    iterator = trange(n_samples_export, leave=False, colour='green') if n_samples_export > 20 else range(
+    iterator = trange(n_samples_export, leave=False, colour='green') if n_samples_export > n_samples_to_show_tqdm else range(
         n_samples_export)
 
     for i in iterator:
         if generated_data_already_exists and not args.recompute:
-            if isinstance(iterator, tqdm):
+            if n_samples_export > n_samples_to_show_tqdm:
                 iterator.set_postfix(status='Generated data already exists. Skipping...')
         else:
             try:
