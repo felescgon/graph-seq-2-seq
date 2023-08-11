@@ -133,7 +133,7 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
 
     for i in iterator:
         if generated_data_already_exists and not args.recompute:
-            if isinstance(iterator, trange):
+            if isinstance(iterator, tqdm):
                 iterator.set_postfix(status='Generated data already exists. Skipping...')
         else:
             try:
