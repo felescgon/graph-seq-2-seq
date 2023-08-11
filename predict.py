@@ -119,21 +119,30 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
     sbs_transf.set_loaders(train_loader, test_loader)
     export_loader = DataLoader(test_data, batch_size=batch_size, shuffle=True)
     generated_data_directory_name = experiment_root_directory_name + "generated_data/"
-    os.makedirs(generated_data_directory_name, exist_ok=True)
+    generated_data_already_exists = False
+    if os.path.exists(generated_data_directory_name):
+        generated_data_already_exists= True
+    else:
+        os.makedirs(generated_data_directory_name, exist_ok=True)
+
     export_iterator = iter(export_loader)
     n_samples_export = args.n_samples_export
-    for i in trange(n_samples_export, leave=False, colour='green'):
-        try:
-            input_batch, output_batch = next(export_iterator)
-        except StopIteration:
-            export_iterator = iter(export_loader)
-            input_batch, output_batch = next(export_iterator)
-        if model_type == "Transformer":
-            input_batch = torch.concat((input_batch, output_batch), dim=1)
-        predicted_sequence = sbs_transf.predict(input_batch)[0]
-        rescaled_sequence = np.reshape(scaler.inverse_transform(predicted_sequence.reshape(-1, 1)),
-                                       predicted_sequence.shape)
-        np.savetxt(f'{generated_data_directory_name}/sample_{i}.csv', rescaled_sequence, delimiter=",")
+    tqdm_n_samples_iterator = trange(n_samples_export, leave=False, colour='green')
+    for i in tqdm_n_samples_iterator:
+        if generated_data_already_exists and not args.recompute:
+            tqdm_n_samples_iterator.set_postfix(status='Generated data already exists. Skipping...')
+        else:
+            try:
+                input_batch, output_batch = next(export_iterator)
+            except StopIteration:
+                export_iterator = iter(export_loader)
+                input_batch, output_batch = next(export_iterator)
+            if model_type == "Transformer":
+                input_batch = torch.concat((input_batch, output_batch), dim=1)
+            predicted_sequence = sbs_transf.predict(input_batch)[0]
+            rescaled_sequence = np.reshape(scaler.inverse_transform(predicted_sequence.reshape(-1, 1)),
+                                           predicted_sequence.shape)
+            np.savetxt(f'{generated_data_directory_name}/sample_{i}.csv', rescaled_sequence, delimiter=",")
 
 def main(args):
     #print(args)
@@ -179,10 +188,16 @@ if __name__ == '__main__':
     parser.add_argument(
         '--recursive',
         default=False,
-        type=lambda x: bool(util.strtobool(str(x))))
+        type=lambda x: bool(util.strtobool(str(x)))
+    )
     parser.add_argument(
         '--device',
         default='cuda' if torch.cuda.is_available() else 'cpu',
         type=str)
+    parser.add_argument(
+        '--recompute',
+        default=False,
+        type=lambda x: bool(util.strtobool(str(x)))
+    )
     args = parser.parse_args()
     main(args)
