@@ -84,6 +84,6 @@ class TemporalConvNet(nn.Module):
 
     def forward(self, x):
         source_seq = x[:, :self.input_len, :]
-        target_seq = x[:, self.input_len:, :]
-        #  ignoring target_seq until we decide if teacher forcing is necessary
+        # ignoring target_seq until we decide if teacher forcing is necessary
+        # target_seq = x[:, self.input_len:, :]
         return self.network(source_seq.permute(0,2,1)).permute(0,2,1)
