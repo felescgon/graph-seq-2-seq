@@ -222,7 +222,7 @@ if __name__ == '__main__':
         type=float)
     parser.add_argument(
         '--teacher_forcing',
-        default=0.5,
+        default=0,
         type=float)
     parser.add_argument(
         '--wide_attn_heads',
