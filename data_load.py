@@ -1,17 +1,17 @@
 import pandas as pd
 import numpy as np
-from datacentertracesdatasets import loadtraces
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import MinMaxScaler
 
 
-def get_ori_data(sequence_length=60, stride=1, shuffle=False, seed=13, ori_data_filename=None, input_output_ratio=0.5, trace='azure_v2'):
+def get_ori_data(sequence_length=60, stride=1, shuffle=False, seed=13, ori_data_filename=None, input_output_ratio=0.5):
     np.random.seed(seed)
-    if ori_data_filename is None:
-        original_df = loadtraces.get_trace(trace_name=trace, trace_type='machine_usage', stride_seconds=300, format='dataframe')
-    else:
-        original_df = pd.read_csv(ori_data_filename, header=None)
+
+    original_df = pd.read_csv(ori_data_filename, header=0)
+    original_df = original_df.fillna(original_df.mean())
+
     start_sequence_range = list(range(0, original_df.shape[0] - sequence_length, stride))
+
     if shuffle:
         np.random.shuffle(start_sequence_range)
     split_size = int(sequence_length * input_output_ratio)

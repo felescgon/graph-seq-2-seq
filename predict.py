@@ -89,10 +89,8 @@ def export_checkpoint(experiment_dir, checkpoint_pth_file, args):
     else:
         scaling_method = checkpoint_context["scaling_method"] if "scaling_method" in checkpoint_context else 'standard'
         ori_data_filename = checkpoint_context["ori_data_filename"] if "ori_data_filename" in checkpoint_context else 'azure_v2'
-        trace = checkpoint_context[
-            "trace"] if "trace" in checkpoint_context else None
         x, y = get_ori_data(sequence_length=seq_len, stride=1, shuffle=True, seed=13,
-                            ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio, trace=trace)
+                            ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio)
         train_idx, val_idx = index_splitter(len(x), [75, 25])
         x_tensor = torch.cat((torch.as_tensor(x), torch.as_tensor(y)), 1)  # full size training
         y_tensor = torch.as_tensor(y)

@@ -52,9 +52,9 @@ def recover_checkpoint_data(experiment_root_directory_name):
     return scaled_x_train_tensor, scaled_y_train_tensor, scaled_x_val_tensor, scaled_y_val_tensor
 
 
-def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len, input_output_ratio, scaling_method, trace):
+def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len, input_output_ratio, scaling_method):
     x, y = get_ori_data(sequence_length=seq_len, stride=1, shuffle=True, seed=13,
-                        ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio, trace=trace)
+                        ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio)
     train_idx, val_idx = index_splitter(len(x), [75, 25])
     x_tensor = torch.cat((torch.as_tensor(x), torch.as_tensor(y)), 1)  # full size training
     y_tensor = torch.as_tensor(y)
@@ -96,7 +96,6 @@ def main(args):
     teacher_forcing = args.teacher_forcing
     lr = args.lr
     epochs = args.epochs
-    trace = args.trace
     dropout = args.dropout
     if args.rnn_module == "RNN":
         rnn_layer_module = nn.RNN
@@ -113,14 +112,14 @@ def main(args):
     params = vars(args)
 
     if encoder_decoder_model == "EncoderDecoder":
-        experiment_root_directory_name = f'{args.experiment_save_dir}/model-{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn-{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
-        tensorboard_model = f'model-{encoder_decoder_model}_{args.rnn_module}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn-{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
+        experiment_root_directory_name = f'{args.experiment_save_dir}/model-{encoder_decoder_model}_{args.rnn_module}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_attn-{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model-{encoder_decoder_model}_{args.rnn_module}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_norm-{normalization}_lr-{lr}_batch-{batch_size}_attn-{narrow_attn_heads}_seq-{seq_len}_scale-{scaling_method}'
     elif encoder_decoder_model == 'TCN':
-        experiment_root_directory_name = f'{args.experiment_save_dir}/model-{encoder_decoder_model}_{trace}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        experiment_root_directory_name = f'{args.experiment_save_dir}/model-{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
         tensorboard_model = f'model-{encoder_decoder_model}_layers-{num_layers}_channels-{args.num_channels}_kernel-{args.kernel_size}_dropout-{dropout}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
     elif encoder_decoder_model == "Transformer":
-        experiment_root_directory_name = f'{args.experiment_save_dir}/model-{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn-{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
-        tensorboard_model = f'model-{encoder_decoder_model}_{trace}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn-{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
+        experiment_root_directory_name = f'{args.experiment_save_dir}/model-{encoder_decoder_model}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn-{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}/'
+        tensorboard_model = f'model-{encoder_decoder_model}_layers-{num_layers}_hidden-{hidden_dim}_dropout-{dropout}_attn-{narrow_attn_heads}_lr-{lr}_batch-{batch_size}_seq-{seq_len}_scale-{scaling_method}'
     checkpoints_directory_name = f'{experiment_root_directory_name}checkpoints/'
     checkpoint_available = os.path.exists(checkpoints_directory_name) and len(
         os.listdir(checkpoints_directory_name)) > 0
@@ -138,7 +137,7 @@ def main(args):
         parameters_text_file.write(repr(args))
         scaled_x_train_tensor, scaled_y_train_tensor, scaled_x_val_tensor, scaled_y_val_tensor = recover_ori_data(
             experiment_root_directory_name=experiment_root_directory_name, ori_data_filename=ori_data_filename,
-            seq_len=seq_len, input_output_ratio=input_output_ratio, scaling_method=scaling_method, trace=trace)
+            seq_len=seq_len, input_output_ratio=input_output_ratio, scaling_method=scaling_method)
 
     train_data = TensorDataset(scaled_x_train_tensor.float(), scaled_y_train_tensor.float())
     train_loader = DataLoader(train_data, batch_size=batch_size, shuffle=True)
@@ -193,12 +192,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument(
         '--ori_data_filename',
-        default=None,
-        type=str)
-    parser.add_argument(
-        '--trace',
-        choices=['azure_v2', 'google2019', 'alibaba2018'],
-        default='azure_v2',
+        default='./data/alibaba/batch_task_chunk_preprocessed_10000.csv',
         type=str)
     parser.add_argument(
         '--epochs',
@@ -255,8 +249,8 @@ if __name__ == '__main__':
         type=str)
     parser.add_argument(
         '--encoder_decoder_model',
-        choices=['EncoderDecoder', 'TCN', 'Transformer'],
-        default='EncoderDecoder',
+        choices=['EncoderDecoder', 'TCN', 'Transformer', 'Seq2Seq'],
+        default='Seq2Seq',
         type=str)
     parser.add_argument(
         '--device',
