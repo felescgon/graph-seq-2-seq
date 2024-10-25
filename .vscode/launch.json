@@ -14,9 +14,11 @@
             "args": [
                 "--epochs","100",
                 "--seq_len","512",
-                "--dropout","0.2"
+                "--dropout","0.2",
                 "--lr","0.001",
-                
+                "--rnn_module","GRU",
+                "--input_output_ratio","0.5",
+                "--encoder_decoder_model","Seq2Seq"
             ]
         }
     ]
