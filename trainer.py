@@ -1,17 +1,17 @@
-import numpy as np
 import datetime
+import os
+import random
+from copy import deepcopy
+
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import random
-import matplotlib.pyplot as plt
-from copy import deepcopy
-from torch.utils.tensorboard import SummaryWriter
 #from torchvision.transforms import Normalize
 from torch.optim.lr_scheduler import LambdaLR
-import os
+from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm, trange
-import datetime
 
 plt.style.use('fivethirtyeight')
 

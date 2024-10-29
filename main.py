@@ -1,17 +1,20 @@
 import argparse
 import os
+import pickle
+
+import pandas as pd
 import torch
 import torch.nn as nn
-import pickle
+import torch.optim as optim
+from torch.utils.data import DataLoader, TensorDataset
+
 from data_load import get_ori_data, scale_data
 from helpers import index_splitter
-from torch.utils.data import DataLoader, TensorDataset
-import torch.optim as optim
 from models.EncoderDecoder import create_encoder_decoder_model
-from trainer import StepByStep
-import pandas as pd
 from models.TCN import TemporalConvNet
 from models.Transformer import Transformer
+from trainer import StepByStep
+
 
 def initialize_checkpoint(checkpoints_directory_name, epochs, model, optimizer):
     last_checkpoint_path = \
@@ -55,6 +58,7 @@ def recover_checkpoint_data(experiment_root_directory_name):
 def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len, input_output_ratio, scaling_method):
     x, y = get_ori_data(sequence_length=seq_len, stride=1, shuffle=True, seed=13,
                         ori_data_filename=ori_data_filename, input_output_ratio=input_output_ratio)
+    # TODO: Implement the new scaling method here (one-hot+encoder-decoder+scaling)
     train_idx, val_idx = index_splitter(len(x), [75, 25])
     x_tensor = torch.cat((torch.as_tensor(x), torch.as_tensor(y)), 1)  # full size training
     y_tensor = torch.as_tensor(y)
@@ -249,8 +253,8 @@ if __name__ == '__main__':
         type=str)
     parser.add_argument(
         '--encoder_decoder_model',
-        choices=['EncoderDecoder', 'TCN', 'Transformer', 'Seq2Seq'],
-        default='Seq2Seq',
+        choices=['EncoderDecoder', 'TCN', 'Transformer'],
+        default='EncoderDecoder',
         type=str)
     parser.add_argument(
         '--device',
