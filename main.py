@@ -8,7 +8,7 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 
-from data_load import get_ori_data, scale_data
+from data_load import get_ori_data, scale_data, encode_data
 from helpers import index_splitter
 from models.EncoderDecoder import create_encoder_decoder_model
 from models.TCN import TemporalConvNet
@@ -66,7 +66,13 @@ def recover_ori_data(experiment_root_directory_name, ori_data_filename, seq_len,
     x_val_tensor = x_tensor[val_idx]
     y_train_tensor = y_tensor[train_idx]
     y_val_tensor = y_tensor[val_idx]
+
+    encoded_x_train, scaler, _ = encode_data(x_train_tensor)
+    
+    
     scaled_x_train, scaler, _ = scale_data(x_train_tensor, scaling_method=scaling_method)
+
+    #TODO: Modify the rest of the calls to scale_data to use the new scaling method
     scaled_y_train, _, _ = scale_data(y_train_tensor, scaler=scaler)
     scaled_x_val, _, _ = scale_data(x_val_tensor, scaler=scaler)
     scaled_y_val, _, _ = scale_data(y_val_tensor, scaler=scaler)

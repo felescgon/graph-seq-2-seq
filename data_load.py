@@ -39,3 +39,11 @@ def scale_data(ori_data, scaling_method='standard', scaler=None):
     else:
         scaled_ori_data = scaler.transform(reshaped_ori_data).reshape(ori_data.shape)
         return scaled_ori_data, scaler, None
+    
+def encode_data(ori_data, encoder_decoder=None):
+    if encoder_decoder is None:
+        return none
+    
+    else:
+        encoded_ori_data = encoder_decoder.transform(ori_data)
+        return encoded_ori_data, encoder_decoder
